@@ -42,7 +42,7 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger('reptidehosting_vps_bot')
+logger = logging.getLogger('vantixnodes_vps_bot')
 
 # Check if lxc command is available
 if not shutil.which("lxc"):
@@ -231,6 +231,23 @@ def save_admin_data():
         finally:
             conn.close()
 
+def delete_vps_from_db(container_name: str):
+    """
+    Physically removes a VPS row from the database by container_name.
+    Must be called whenever a VPS is deleted so the name can be reused later.
+    """
+    with db_thread_lock:
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute('DELETE FROM vps WHERE container_name = ?', (container_name,))
+            conn.commit()
+            logger.info(f"Deleted VPS '{container_name}' from database.")
+        except Exception as e:
+            logger.error(f"Error deleting VPS '{container_name}' from DB: {e}")
+        finally:
+            conn.close()
+
 # Initialize database
 init_db()
 
@@ -259,15 +276,15 @@ def truncate_text(text, max_length=1024):
         return text
     return text[:max_length-3] + "..."
 
-# Embed creation functions with black theme and ReptideHosting branding
+# Embed creation functions with black theme and Vantix Nodes branding
 def create_embed(title, description="", color=0x1a1a1a):
     embed = discord.Embed(
-        title=truncate_text(f"⭐ ReptideHosting - {title}", 256),
+        title=truncate_text(f"⭐ Vantix Nodes - {title}", 256),
         description=truncate_text(description, 4096),
         color=color
     )
     embed.set_thumbnail(url=BOT_LOGO_URL)
-    embed.set_footer(text=f"ReptideHosting VPS Manager • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+    embed.set_footer(text=f"Vantix Nodes VPS Manager • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                      icon_url=BOT_LOGO_URL)
     return embed
 
@@ -297,7 +314,7 @@ def is_admin():
         user_id = str(ctx.author.id)
         if user_id == str(MAIN_ADMIN_ID) or user_id in admin_data.get("admins", []):
             return True
-        raise commands.CheckFailure("You need admin permissions to use this command. Contact ReptideHosting support.")
+        raise commands.CheckFailure("You need admin permissions to use this command. Contact Vantix Nodes support.")
     return commands.check(predicate)
 
 def is_main_admin():
@@ -352,22 +369,22 @@ async def get_or_create_vps_role(guild):
         role = guild.get_role(VPS_USER_ROLE_ID)
         if role:
             return role
-    role = discord.utils.get(guild.roles, name="ReptideHosting VPS User")
+    role = discord.utils.get(guild.roles, name="Vantix Nodes VPS User")
     if role:
         VPS_USER_ROLE_ID = role.id
         return role
     try:
         role = await guild.create_role(
-            name="ReptideHosting VPS User",
+            name="Vantix Nodes VPS User",
             color=discord.Color.dark_purple(),
-            reason="ReptideHosting VPS User role for bot management",
+            reason="Vantix Nodes VPS User role for bot management",
             permissions=discord.Permissions.none()
         )
         VPS_USER_ROLE_ID = role.id
-        logger.info(f"Created ReptideHosting VPS User role: {role.name} (ID: {role.id})")
+        logger.info(f"Created Vantix Nodes VPS User role: {role.name} (ID: {role.id})")
         return role
     except Exception as e:
-        logger.error(f"Failed to create ReptideHosting VPS User role: {e}")
+        logger.error(f"Failed to create Vantix Nodes VPS User role: {e}")
         return None
 
 # Host resource monitoring functions
@@ -588,14 +605,14 @@ async def on_ready():
         logger.warning(f"Storage pool '{DEFAULT_STORAGE_POOL}' NOT found. VPS creation may fail.")
     
     status_loop.start()
-    logger.info("ReptideHosting Bot is ready and stable!")
+    logger.info("Vantix Nodes Bot is ready and stable!")
 
 @tasks.loop(minutes=5)
 async def status_loop():
     """Enhancement: Cycles the bot status to show activity."""
     total_vps = sum(len(vps_list) for vps_list in vps_data.values())
     statuses = [
-        discord.Activity(type=discord.ActivityType.watching, name="ReptideHosting VPS Manager"),
+        discord.Activity(type=discord.ActivityType.watching, name="Vantix Nodes VPS Manager"),
         discord.Activity(type=discord.ActivityType.watching, name=f"{total_vps} Active Containers"),
         discord.Activity(type=discord.ActivityType.listening, name="!help for commands"),
         discord.Activity(type=discord.ActivityType.competing, name="Resource Monitoring"),
@@ -611,19 +628,19 @@ async def on_command_error(ctx, error):
     elif isinstance(error, commands.BadArgument):
         await ctx.send(embed=create_error_embed("Invalid Argument", "Please check your input and try again."))
     elif isinstance(error, commands.CheckFailure):
-        error_msg = str(error) if str(error) else "You need admin permissions for this command. Contact ReptideHosting support."
+        error_msg = str(error) if str(error) else "You need admin permissions for this command. Contact Vantix Nodes support."
         await ctx.send(embed=create_error_embed("Access Denied", error_msg))
     elif isinstance(error, discord.NotFound):
         await ctx.send(embed=create_error_embed("Error", "The requested resource was not found. Please try again."))
     else:
         logger.error(f"Command error: {error}")
-        await ctx.send(embed=create_error_embed("System Error", "An unexpected error occurred. ReptideHosting support has been notified."))
+        await ctx.send(embed=create_error_embed("System Error", "An unexpected error occurred. Vantix Nodes support has been notified."))
 
 # Bot commands
 @bot.command(name='ping')
 async def ping(ctx):
     latency = round(bot.latency * 1000)
-    embed = create_success_embed("Pong!", f"ReptideHosting Bot latency: {latency}ms")
+    embed = create_success_embed("Pong!", f"Vantix Nodes Bot latency: {latency}ms")
     await ctx.send(embed=embed)
 
 @bot.command(name='uptime')
@@ -676,11 +693,11 @@ async def my_vps(ctx):
     user_id = str(ctx.author.id)
     vps_list = vps_data.get(user_id, [])
     if not vps_list:
-        embed = create_error_embed("No VPS Found", "You don't have any ReptideHosting VPS. Contact an admin to create one.")
-        add_field(embed, "Quick Actions", "• `!manage` - Manage VPS\n• Contact ReptideHosting admin for VPS creation", False)
+        embed = create_error_embed("No VPS Found", "You don't have any Vantix Nodes VPS. Contact an admin to create one.")
+        add_field(embed, "Quick Actions", "• `!manage` - Manage VPS\n• Contact Vantix Nodes admin for VPS creation", False)
         await ctx.send(embed=embed)
         return
-    embed = create_info_embed("My ReptideHosting VPS", "")
+    embed = create_info_embed("My Vantix Nodes VPS", "")
     text = []
     for i, vps in enumerate(vps_list):
         status = vps.get('status', 'unknown').upper()
@@ -699,7 +716,7 @@ async def my_vps(ctx):
 async def lxc_list(ctx):
     try:
         result = await execute_lxc("lxc list")
-        embed = create_info_embed("ReptideHosting LXC Containers List", result)
+        embed = create_info_embed("Vantix Nodes LXC Containers List", result)
         await ctx.send(embed=embed)
     except Exception as e:
         await ctx.send(embed=create_error_embed("Error", str(e)))
@@ -732,22 +749,44 @@ class OSSelectView(discord.ui.View):
             vps_data[user_id] = []
         
         # --- FIX FOR UNIQUE CONSTRAINT ERROR ---
+        # Check both in-memory data AND the database AND actual LXC containers
         vps_count = 1
         while True:
-            container_name = f"reptidehosting-vps-{user_id}-{vps_count}"
-            
-            # Check if this name exists in memory
-            name_exists = False
-            for v_list in vps_data.values():
-                for v in v_list:
-                    if v['container_name'] == container_name:
-                        name_exists = True
-                        break
-                if name_exists:
-                    break
-            
-            if not name_exists:
-                break # Found a free name
+            container_name = f"vantixnodes-vps-{user_id}-{vps_count}"
+
+            # 1. Check in-memory
+            name_in_memory = any(
+                v['container_name'] == container_name
+                for v_list in vps_data.values()
+                for v in v_list
+            )
+
+            # 2. Check DB directly (catches orphan rows left after crashes)
+            name_in_db = False
+            try:
+                conn_check = get_db()
+                cur_check = conn_check.cursor()
+                cur_check.execute('SELECT 1 FROM vps WHERE container_name = ?', (container_name,))
+                name_in_db = cur_check.fetchone() is not None
+                conn_check.close()
+            except Exception:
+                pass
+
+            # 3. Check actual LXC (catches containers that exist but aren't in DB/memory)
+            name_in_lxc = False
+            try:
+                proc_check = await asyncio.create_subprocess_exec(
+                    "lxc", "info", container_name,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+                await proc_check.communicate()
+                name_in_lxc = (proc_check.returncode == 0)
+            except Exception:
+                pass
+
+            if not name_in_memory and not name_in_db and not name_in_lxc:
+                break  # Found a free name
             vps_count += 1
         # ---------------------------------------
 
@@ -781,10 +820,10 @@ class OSSelectView(discord.ui.View):
                 vps_role = await get_or_create_vps_role(self.ctx.guild)
                 if vps_role:
                     try:
-                        await self.user.add_roles(vps_role, reason="ReptideHosting VPS ownership granted")
+                        await self.user.add_roles(vps_role, reason="Vantix Nodes VPS ownership granted")
                     except discord.Forbidden:
-                        logger.warning(f"Failed to assign ReptideHosting VPS role to {self.user.name}")
-            success_embed = create_success_embed("ReptideHosting VPS Created Successfully")
+                        logger.warning(f"Failed to assign Vantix Nodes VPS role to {self.user.name}")
+            success_embed = create_success_embed("Vantix Nodes VPS Created Successfully")
             add_field(success_embed, "Owner", self.user.mention, True)
             add_field(success_embed, "VPS ID", f"#{vps_count}", True)
             add_field(success_embed, "Container", f"`{container_name}`", True)
@@ -793,9 +832,9 @@ class OSSelectView(discord.ui.View):
             add_field(success_embed, "Features", "Nesting, Privileged, FUSE, Kernel Modules (Docker Ready)", False)
             add_field(success_embed, "Disk Note", "Run `sudo resize2fs /` inside VPS if needed to expand filesystem.", False)
             await interaction.followup.send(embed=success_embed)
-            dm_embed = create_success_embed("ReptideHosting VPS Created!", f"Your VPS has been successfully deployed by an admin!")
+            dm_embed = create_success_embed("Vantix Nodes VPS Created!", f"Your VPS has been successfully deployed by an admin!")
             add_field(dm_embed, "VPS Details", f"**VPS ID:** #{vps_count}\n**Container Name:** `{container_name}`\n**Configuration:** {config_str}\n**Status:** Running\n**OS:** {os_version}\n**Created:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", False)
-            add_field(dm_embed, "Management", "• Use `!manage` to start/stop/reinstall your ReptideHosting VPS\n• Use `!manage` → SSH for terminal access\n• Contact ReptideHosting admin for upgrades or issues", False)
+            add_field(dm_embed, "Management", "• Use `!manage` to start/stop/reinstall your Vantix Nodes VPS\n• Use `!manage` → SSH for terminal access\n• Contact Vantix Nodes admin for upgrades or issues", False)
             add_field(dm_embed, "Important Notes", "• Full root access via SSH\n• Docker-ready with nesting and privileged mode\n• Back up your data regularly", False)
             try:
                 await self.user.send(embed=dm_embed)
@@ -831,15 +870,15 @@ class ManageView(discord.ui.View):
         if len(vps_list) > 1:
             options = [
                 discord.SelectOption(
-                    label=f"ReptideHosting VPS {i+1} ({v.get('config', 'Custom')})",
+                    label=f"Vantix Nodes VPS {i+1} ({v.get('config', 'Custom')})",
                     description=f"Status: {v.get('status', 'unknown')}",
                     value=str(i)
                 ) for i, v in enumerate(vps_list)
             ]
-            self.select = discord.ui.Select(placeholder="Select a ReptideHosting VPS to manage", options=options)
+            self.select = discord.ui.Select(placeholder="Select a Vantix Nodes VPS to manage", options=options)
             self.select.callback = self.select_vps
             self.add_item(self.select)
-            self.initial_embed = create_embed("ReptideHosting VPS Management", "Select a VPS from the dropdown menu below.", 0x1a1a1a)
+            self.initial_embed = create_embed("Vantix Nodes VPS Management", "Select a VPS from the dropdown menu below.", 0x1a1a1a)
             add_field(self.initial_embed, "Available VPS", "\n".join([f"**VPS {i+1}:** `{v['container_name']}` - Status: `{v.get('status', 'unknown').upper()}`" for i, v in enumerate(vps_list)]), False)
         else:
             self.selected_index = 0
@@ -877,7 +916,7 @@ class ManageView(discord.ui.View):
             except:
                 owner_text = f"\n**Owner ID:** {self.owner_id}"
         embed = create_embed(
-            f"ReptideHosting VPS Management - VPS {index + 1}",
+            f"Vantix Nodes VPS Management - VPS {index + 1}",
             f"Managing container: `{container_name}`{owner_text}",
             status_color
         )
@@ -890,12 +929,12 @@ class ManageView(discord.ui.View):
         resource_info += f"**Uptime:** {uptime}"
         add_field(embed, "📊 Allocated Resources", resource_info, False)
         if suspended:
-            add_field(embed, "⚠️ Suspended", "This ReptideHosting VPS is suspended. Contact an admin to unsuspend.", False)
+            add_field(embed, "⚠️ Suspended", "This Vantix Nodes VPS is suspended. Contact an admin to unsuspend.", False)
         if whitelisted:
             add_field(embed, "✅ Whitelisted", "This VPS is exempt from auto-suspension.", False)
         live_stats = f"**CPU Usage:** {cpu_usage}\n**Memory:** {memory_usage}\n**Disk:** {disk_usage}"
         add_field(embed, "📈 Live Usage", live_stats, False)
-        add_field(embed, "🎮 Controls", "Use the buttons below to manage your ReptideHosting VPS", False)
+        add_field(embed, "🎮 Controls", "Use the buttons below to manage your Vantix Nodes VPS", False)
         return embed
 
     def add_action_buttons(self):
@@ -918,7 +957,7 @@ class ManageView(discord.ui.View):
 
     async def select_vps(self, interaction: discord.Interaction):
         if str(interaction.user.id) != self.user_id and not self.is_admin:
-            await interaction.response.send_message(embed=create_error_embed("Access Denied", "This is not your ReptideHosting VPS!"), ephemeral=True)
+            await interaction.response.send_message(embed=create_error_embed("Access Denied", "This is not your Vantix Nodes VPS!"), ephemeral=True)
             return
         self.selected_index = int(self.select.values[0])
         new_embed = await self.create_vps_embed(self.selected_index)
@@ -928,7 +967,7 @@ class ManageView(discord.ui.View):
 
     async def action_callback(self, interaction: discord.Interaction, action: str):
         if str(interaction.user.id) != self.user_id and not self.is_admin:
-            await interaction.response.send_message(embed=create_error_embed("Access Denied", "This is not your ReptideHosting VPS!"), ephemeral=True)
+            await interaction.response.send_message(embed=create_error_embed("Access Denied", "This is not your Vantix Nodes VPS!"), ephemeral=True)
             return
         if self.selected_index is None:
             await interaction.response.send_message(embed=create_error_embed("No VPS Selected", "Please select a VPS first."), ephemeral=True)
@@ -937,7 +976,7 @@ class ManageView(discord.ui.View):
         target_vps = vps_data[self.owner_id][actual_idx]
         suspended = target_vps.get('suspended', False)
         if suspended and not self.is_admin and action != 'stats':
-            await interaction.response.send_message(embed=create_error_embed("Access Denied", "This ReptideHosting VPS is suspended. Contact an admin to unsuspend."), ephemeral=True)
+            await interaction.response.send_message(embed=create_error_embed("Access Denied", "This Vantix Nodes VPS is suspended. Contact an admin to unsuspend."), ephemeral=True)
             return
         container_name = target_vps["container_name"]
         if action == 'stats':
@@ -946,7 +985,7 @@ class ManageView(discord.ui.View):
             memory_usage = await get_container_memory(container_name)
             disk_usage = await get_container_disk(container_name)
             uptime = await get_container_uptime(container_name)
-            stats_embed = create_info_embed("📈 ReptideHosting Live Statistics", f"Real-time stats for `{container_name}`")
+            stats_embed = create_info_embed("📈 Vantix Nodes Live Statistics", f"Real-time stats for `{container_name}`")
             add_field(stats_embed, "Status", f"`{status.upper()}`", True)
             add_field(stats_embed, "CPU", cpu_usage, True)
             add_field(stats_embed, "Memory", memory_usage, True)
@@ -956,13 +995,13 @@ class ManageView(discord.ui.View):
             return
         if action == 'reinstall':
             if self.is_shared or self.is_admin:
-                await interaction.response.send_message(embed=create_error_embed("Access Denied", "Only the ReptideHosting VPS owner can reinstall!"), ephemeral=True)
+                await interaction.response.send_message(embed=create_error_embed("Access Denied", "Only the Vantix Nodes VPS owner can reinstall!"), ephemeral=True)
                 return
             if suspended:
-                await interaction.response.send_message(embed=create_error_embed("Cannot Reinstall", "Unsuspend the ReptideHosting VPS first."), ephemeral=True)
+                await interaction.response.send_message(embed=create_error_embed("Cannot Reinstall", "Unsuspend the Vantix Nodes VPS first."), ephemeral=True)
                 return
             os_version = target_vps.get('os_version', 'ubuntu:22.04')
-            confirm_embed = create_warning_embed("ReptideHosting Reinstall Warning",
+            confirm_embed = create_warning_embed("Vantix Nodes Reinstall Warning",
                 f"⚠️ **WARNING:** This will erase all data on VPS `{container_name}` and reinstall {os_version}.\n\n"
                 f"This action cannot be undone. Continue?")
             class ConfirmView(discord.ui.View):
@@ -979,7 +1018,7 @@ class ManageView(discord.ui.View):
                     try:
                         await inter.followup.send(embed=create_info_embed("Deleting Container", f"Forcefully removing container `{self.container_name}`..."), ephemeral=True)
                         await execute_lxc(f"lxc delete {self.container_name} --force")
-                        await inter.followup.send(embed=create_info_embed("Recreating Container", f"Creating new ReptideHosting container `{self.container_name}`..."), ephemeral=True)
+                        await inter.followup.send(embed=create_info_embed("Recreating Container", f"Creating new Vantix Nodes container `{self.container_name}`..."), ephemeral=True)
                         target_vps = vps_data[self.owner_id][self.actual_idx]
                         original_ram = target_vps["ram"]
                         original_cpu = target_vps["cpu"]
@@ -1000,7 +1039,7 @@ class ManageView(discord.ui.View):
                         config_str = f"{ram_gb}GB RAM / {original_cpu} CPU / {storage_gb}GB Disk"
                         target_vps["config"] = config_str
                         save_vps_data()
-                        await inter.followup.send(embed=create_success_embed("Reinstall Complete", f"ReptideHosting VPS `{self.container_name}` has been successfully reinstalled!"), ephemeral=True)
+                        await inter.followup.send(embed=create_success_embed("Reinstall Complete", f"Vantix Nodes VPS `{self.container_name}` has been successfully reinstalled!"), ephemeral=True)
                         new_embed = await self.parent_view.create_vps_embed(self.parent_view.selected_index)
                         await inter.followup.send(embed=new_embed, view=self.parent_view, ephemeral=True)
                     except Exception as e:
@@ -1022,7 +1061,7 @@ class ManageView(discord.ui.View):
                 await execute_lxc(f"lxc start {container_name}")
                 target_vps["status"] = "running"
                 save_vps_data()
-                await interaction.followup.send(embed=create_success_embed("VPS Started", f"ReptideHosting VPS `{container_name}` is now running!"), ephemeral=True)
+                await interaction.followup.send(embed=create_success_embed("VPS Started", f"Vantix Nodes VPS `{container_name}` is now running!"), ephemeral=True)
             except Exception as e:
                 await interaction.followup.send(embed=create_error_embed("Start Failed", str(e)), ephemeral=True)
         elif action == 'stop':
@@ -1030,14 +1069,14 @@ class ManageView(discord.ui.View):
                 await execute_lxc(f"lxc stop {container_name}", timeout=120)
                 target_vps["status"] = "stopped"
                 save_vps_data()
-                await interaction.followup.send(embed=create_success_embed("VPS Stopped", f"ReptideHosting VPS `{container_name}` has been stopped!"), ephemeral=True)
+                await interaction.followup.send(embed=create_success_embed("VPS Stopped", f"Vantix Nodes VPS `{container_name}` has been stopped!"), ephemeral=True)
             except Exception as e:
                 await interaction.followup.send(embed=create_error_embed("Stop Failed", str(e)), ephemeral=True)
         elif action == 'tmate':
             if suspended:
-                await interaction.followup.send(embed=create_error_embed("Access Denied", "Cannot access suspended ReptideHosting VPS."), ephemeral=True)
+                await interaction.followup.send(embed=create_error_embed("Access Denied", "Cannot access suspended Vantix Nodes VPS."), ephemeral=True)
                 return
-            await interaction.followup.send(embed=create_info_embed("SSH Access", "Generating ReptideHosting SSH connection..."), ephemeral=True)
+            await interaction.followup.send(embed=create_info_embed("SSH Access", "Generating Vantix Nodes SSH connection..."), ephemeral=True)
             try:
                 check_proc = await asyncio.create_subprocess_exec(
                     "lxc", "exec", container_name, "--", "which", "tmate",
@@ -1049,8 +1088,8 @@ class ManageView(discord.ui.View):
                     await interaction.followup.send(embed=create_info_embed("Installing SSH", "Installing tmate..."), ephemeral=True)
                     await execute_lxc(f"lxc exec {container_name} -- apt-get update -y")
                     await execute_lxc(f"lxc exec {container_name} -- apt-get install tmate -y")
-                    await interaction.followup.send(embed=create_success_embed("Installed", "ReptideHosting SSH service installed!"), ephemeral=True)
-                session_name = f"reptidehosting-session-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                    await interaction.followup.send(embed=create_success_embed("Installed", "Vantix Nodes SSH service installed!"), ephemeral=True)
+                session_name = f"vantixnodes-session-{datetime.now().strftime('%Y%m%d%H%M%S')}"
                 await execute_lxc(f"lxc exec {container_name} -- tmate -S /tmp/{session_name}.sock new-session -d")
                 await asyncio.sleep(3)
                 ssh_proc = await asyncio.create_subprocess_exec(
@@ -1062,14 +1101,14 @@ class ManageView(discord.ui.View):
                 ssh_url = stdout.decode().strip() if stdout else None
                 if ssh_url:
                     try:
-                        ssh_embed = create_embed("🔑 ReptideHosting SSH Access", f"SSH connection for VPS `{container_name}`:", 0x00ff88)
+                        ssh_embed = create_embed("🔑 Vantix Nodes SSH Access", f"SSH connection for VPS `{container_name}`:", 0x00ff88)
                         add_field(ssh_embed, "Command", f"```{ssh_url}```", False)
                         add_field(ssh_embed, "⚠️ Security", "This link is temporary. Do not share it.", False)
                         add_field(ssh_embed, "📝 Session", f"Session ID: {session_name}", False)
                         await interaction.user.send(embed=ssh_embed)
-                        await interaction.followup.send(embed=create_success_embed("SSH Sent", f"Check your DMs for ReptideHosting SSH link! Session: {session_name}"), ephemeral=True)
+                        await interaction.followup.send(embed=create_success_embed("SSH Sent", f"Check your DMs for Vantix Nodes SSH link! Session: {session_name}"), ephemeral=True)
                     except discord.Forbidden:
-                        await interaction.followup.send(embed=create_error_embed("DM Failed", "Enable DMs to receive ReptideHosting SSH link!"), ephemeral=True)
+                        await interaction.followup.send(embed=create_error_embed("DM Failed", "Enable DMs to receive Vantix Nodes SSH link!"), ephemeral=True)
                 else:
                     error_msg = stderr.decode().strip() if stderr else "Unknown error"
                     await interaction.followup.send(embed=create_error_embed("SSH Failed", error_msg), ephemeral=True)
@@ -1083,21 +1122,21 @@ async def manage_vps(ctx, user: discord.Member = None):
     if user:
         user_id_check = str(ctx.author.id)
         if user_id_check != str(MAIN_ADMIN_ID) and user_id_check not in admin_data.get("admins", []):
-            await ctx.send(embed=create_error_embed("Access Denied", "Only ReptideHosting admins can manage other users' VPS."))
+            await ctx.send(embed=create_error_embed("Access Denied", "Only Vantix Nodes admins can manage other users' VPS."))
             return
         user_id = str(user.id)
         vps_list = vps_data.get(user_id, [])
         if not vps_list:
-            await ctx.send(embed=create_error_embed("No VPS Found", f"{user.mention} doesn't have any ReptideHosting VPS."))
+            await ctx.send(embed=create_error_embed("No VPS Found", f"{user.mention} doesn't have any Vantix Nodes VPS."))
             return
         view = ManageView(str(ctx.author.id), vps_list, is_admin=True, owner_id=user_id)
-        await ctx.send(embed=create_info_embed(f"Managing {user.name}'s ReptideHosting VPS", f"Managing VPS for {user.mention}"), view=view)
+        await ctx.send(embed=create_info_embed(f"Managing {user.name}'s Vantix Nodes VPS", f"Managing VPS for {user.mention}"), view=view)
     else:
         user_id = str(ctx.author.id)
         vps_list = vps_data.get(user_id, [])
         if not vps_list:
-            embed = create_error_embed("No VPS Found", "You don't have any ReptideHosting VPS. Contact an admin to create one.")
-            add_field(embed, "Quick Actions", "• `!manage` - Manage VPS\n• Contact ReptideHosting admin for VPS creation", False)
+            embed = create_error_embed("No VPS Found", "You don't have any Vantix Nodes VPS. Contact an admin to create one.")
+            add_field(embed, "Quick Actions", "• `!manage` - Manage VPS\n• Contact Vantix Nodes admin for VPS creation", False)
             await ctx.send(embed=embed)
             return
         view = ManageView(user_id, vps_list)
@@ -1130,7 +1169,7 @@ async def list_all_vps(ctx):
             suspended_vps += user_suspended
             whitelisted_vps += user_whitelisted
 
-            user_summary.append(f"**{user.name}** ({user.mention}) - {user_vps_count} ReptideHosting VPS ({user_running} running, {user_suspended} suspended, {user_whitelisted} whitelisted)")
+            user_summary.append(f"**{user.name}** ({user.mention}) - {user_vps_count} Vantix Nodes VPS ({user_running} running, {user_suspended} suspended, {user_whitelisted} whitelisted)")
 
             for i, vps in enumerate(vps_list):
                 status_emoji = "🟢" if vps.get('status') == 'running' and not vps.get('suspended', False) else "🟡" if vps.get('suspended', False) else "🔴"
@@ -1142,12 +1181,12 @@ async def list_all_vps(ctx):
                 vps_info.append(f"{status_emoji} **{user.name}** - VPS {i+1}: `{vps['container_name']}` - {vps.get('config', 'Custom')} - {status_text}")
 
         except discord.NotFound:
-            vps_info.append(f"❓ Unknown User ({user_id}) - {len(vps_list)} ReptideHosting VPS")
-    embed = create_embed("All ReptideHosting VPS Information", "Complete overview of all ReptideHosting VPS deployments and user statistics", 0x1a1a1a)
+            vps_info.append(f"❓ Unknown User ({user_id}) - {len(vps_list)} Vantix Nodes VPS")
+    embed = create_embed("All Vantix Nodes VPS Information", "Complete overview of all Vantix Nodes VPS deployments and user statistics", 0x1a1a1a)
     add_field(embed, "System Overview", f"**Total Users:** {total_users}\n**Total VPS:** {total_vps}\n**Running:** {running_vps}\n**Stopped:** {stopped_vps}\n**Suspended:** {suspended_vps}\n**Whitelisted:** {whitelisted_vps}", False)
     await ctx.send(embed=embed)
     if user_summary:
-        embed = create_embed("ReptideHosting User Summary", f"Summary of all users and their ReptideHosting VPS", 0x1a1a1a)
+        embed = create_embed("Vantix Nodes User Summary", f"Summary of all users and their Vantix Nodes VPS", 0x1a1a1a)
         summary_text = "\n".join(user_summary)
         chunks = [summary_text[i:i+1024] for i in range(0, len(summary_text), 1024)]
         for idx, chunk in enumerate(chunks, 1):
@@ -1157,7 +1196,7 @@ async def list_all_vps(ctx):
         vps_text = "\n".join(vps_info)
         chunks = [vps_text[i:i+1024] for i in range(0, len(vps_text), 1024)]
         for idx, chunk in enumerate(chunks, 1):
-            embed = create_embed(f"ReptideHosting VPS Details (Part {idx})", "List of all ReptideHosting VPS deployments", 0x1a1a1a)
+            embed = create_embed(f"Vantix Nodes VPS Details (Part {idx})", "List of all Vantix Nodes VPS deployments", 0x1a1a1a)
             add_field(embed, "VPS List", chunk, False)
             await ctx.send(embed=embed)
 
@@ -1166,11 +1205,11 @@ async def manage_shared_vps(ctx, owner: discord.Member, vps_number: int):
     owner_id = str(owner.id)
     user_id = str(ctx.author.id)
     if owner_id not in vps_data or vps_number < 1 or vps_number > len(vps_data[owner_id]):
-        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or owner doesn't have a ReptideHosting VPS."))
+        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or owner doesn't have a Vantix Nodes VPS."))
         return
     vps = vps_data[owner_id][vps_number - 1]
     if user_id not in vps.get("shared_with", []):
-        await ctx.send(embed=create_error_embed("Access Denied", "You do not have access to this ReptideHosting VPS."))
+        await ctx.send(embed=create_error_embed("Access Denied", "You do not have access to this Vantix Nodes VPS."))
         return
     view = ManageView(user_id, [vps], is_shared=True, owner_id=owner_id, actual_index=vps_number - 1)
     embed = await view.get_initial_embed()
@@ -1181,19 +1220,19 @@ async def share_user(ctx, shared_user: discord.Member, vps_number: int):
     user_id = str(ctx.author.id)
     shared_user_id = str(shared_user.id)
     if user_id not in vps_data or vps_number < 1 or vps_number > len(vps_data[user_id]):
-        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or you don't have a ReptideHosting VPS."))
+        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or you don't have a Vantix Nodes VPS."))
         return
     vps = vps_data[user_id][vps_number - 1]
     if "shared_with" not in vps:
         vps["shared_with"] = []
     if shared_user_id in vps["shared_with"]:
-        await ctx.send(embed=create_error_embed("Already Shared", f"{shared_user.mention} already has access to this ReptideHosting VPS!"))
+        await ctx.send(embed=create_error_embed("Already Shared", f"{shared_user.mention} already has access to this Vantix Nodes VPS!"))
         return
     vps["shared_with"].append(shared_user_id)
     save_vps_data()
-    await ctx.send(embed=create_success_embed("VPS Shared", f"ReptideHosting VPS #{vps_number} shared with {shared_user.mention}!"))
+    await ctx.send(embed=create_success_embed("VPS Shared", f"Vantix Nodes VPS #{vps_number} shared with {shared_user.mention}!"))
     try:
-        await shared_user.send(embed=create_embed("ReptideHosting VPS Access Granted", f"You have access to VPS #{vps_number} from {ctx.author.mention}. Use `!manage-shared {ctx.author.mention} {vps_number}`", 0x00ff88))
+        await shared_user.send(embed=create_embed("Vantix Nodes VPS Access Granted", f"You have access to VPS #{vps_number} from {ctx.author.mention}. Use `!manage-shared {ctx.author.mention} {vps_number}`", 0x00ff88))
     except discord.Forbidden:
         await ctx.send(embed=create_info_embed("Notification Failed", f"Could not DM {shared_user.mention}"))
 
@@ -1202,19 +1241,19 @@ async def revoke_share(ctx, shared_user: discord.Member, vps_number: int):
     user_id = str(ctx.author.id)
     shared_user_id = str(shared_user.id)
     if user_id not in vps_data or vps_number < 1 or vps_number > len(vps_data[user_id]):
-        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or you don't have a ReptideHosting VPS."))
+        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or you don't have a Vantix Nodes VPS."))
         return
     vps = vps_data[user_id][vps_number - 1]
     if "shared_with" not in vps:
         vps["shared_with"] = []
     if shared_user_id not in vps["shared_with"]:
-        await ctx.send(embed=create_error_embed("Not Shared", f"{shared_user.mention} doesn't have access to this ReptideHosting VPS!"))
+        await ctx.send(embed=create_error_embed("Not Shared", f"{shared_user.mention} doesn't have access to this Vantix Nodes VPS!"))
         return
     vps["shared_with"].remove(shared_user_id)
     save_vps_data()
-    await ctx.send(embed=create_success_embed("Access Revoked", f"Access to ReptideHosting VPS #{vps_number} revoked from {shared_user.mention}!"))
+    await ctx.send(embed=create_success_embed("Access Revoked", f"Access to Vantix Nodes VPS #{vps_number} revoked from {shared_user.mention}!"))
     try:
-        await shared_user.send(embed=create_embed("ReptideHosting VPS Access Revoked", f"Your access to VPS #{vps_number} by {ctx.author.mention} has been revoked.", 0xff3366))
+        await shared_user.send(embed=create_embed("Vantix Nodes VPS Access Revoked", f"Your access to VPS #{vps_number} by {ctx.author.mention} has been revoked.", 0xff3366))
     except discord.Forbidden:
         await ctx.send(embed=create_info_embed("Notification Failed", f"Could not DM {shared_user.mention}"))
 
@@ -1223,13 +1262,15 @@ async def revoke_share(ctx, shared_user: discord.Member, vps_number: int):
 async def delete_vps(ctx, user: discord.Member, vps_number: int, *, reason: str = "No reason"):
     user_id = str(user.id)
     if user_id not in vps_data or vps_number < 1 or vps_number > len(vps_data[user_id]):
-        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or user doesn't have a ReptideHosting VPS."))
+        await ctx.send(embed=create_error_embed("Invalid VPS", "Invalid VPS number or user doesn't have a Vantix Nodes VPS."))
         return
     vps = vps_data[user_id][vps_number - 1]
     container_name = vps["container_name"]
-    await ctx.send(embed=create_info_embed("Deleting ReptideHosting VPS", f"Removing VPS #{vps_number}..."))
+    await ctx.send(embed=create_info_embed("Deleting Vantix Nodes VPS", f"Removing VPS #{vps_number}..."))
     try:
         await execute_lxc(f"lxc delete {container_name} --force")
+        # Remove from DB first so the container_name can be reused in future creations
+        delete_vps_from_db(container_name)
         del vps_data[user_id][vps_number - 1]
         if not vps_data[user_id]:
             del vps_data[user_id]
@@ -1237,11 +1278,11 @@ async def delete_vps(ctx, user: discord.Member, vps_number: int, *, reason: str 
                 vps_role = await get_or_create_vps_role(ctx.guild)
                 if vps_role and vps_role in user.roles:
                     try:
-                        await user.remove_roles(vps_role, reason="No ReptideHosting VPS ownership")
+                        await user.remove_roles(vps_role, reason="No Vantix Nodes VPS ownership")
                     except discord.Forbidden:
-                        logger.warning(f"Failed to remove ReptideHosting VPS role from {user.name}")
+                        logger.warning(f"Failed to remove Vantix Nodes VPS role from {user.name}")
         save_vps_data()
-        embed = create_success_embed("ReptideHosting VPS Deleted Successfully")
+        embed = create_success_embed("Vantix Nodes VPS Deleted Successfully")
         add_field(embed, "Owner", user.mention, True)
         add_field(embed, "VPS ID", f"#{vps_number}", True)
         add_field(embed, "Container", f"`{container_name}`", True)
@@ -1269,12 +1310,12 @@ async def add_resources(ctx, vps_id: str, ram: int = None, cpu: int = None, disk
         if found_vps:
             break
     if not found_vps:
-        await ctx.send(embed=create_error_embed("VPS Not Found", f"No ReptideHosting VPS found with ID: `{vps_id}`"))
+        await ctx.send(embed=create_error_embed("VPS Not Found", f"No Vantix Nodes VPS found with ID: `{vps_id}`"))
         return
     was_running = found_vps.get('status') == 'running' and not found_vps.get('suspended', False)
     disk_changed = disk is not None
     if was_running:
-        await ctx.send(embed=create_info_embed("Stopping VPS", f"Stopping ReptideHosting VPS `{vps_id}` to apply resource changes..."))
+        await ctx.send(embed=create_info_embed("Stopping VPS", f"Stopping Vantix Nodes VPS `{vps_id}` to apply resource changes..."))
         try:
             await execute_lxc(f"lxc stop {vps_id}")
             found_vps['status'] = 'stopped'
@@ -1321,7 +1362,7 @@ async def add_resources(ctx, vps_id: str, ram: int = None, cpu: int = None, disk
             found_vps['status'] = 'running'
             save_vps_data()
 
-        embed = create_success_embed("Resources Added", f"Successfully added resources to ReptideHosting VPS `{vps_id}`")
+        embed = create_success_embed("Resources Added", f"Successfully added resources to Vantix Nodes VPS `{vps_id}`")
         add_field(embed, "Changes Applied", "\n".join(changes), False)
         if disk_changed:
             add_field(embed, "Disk Note", "Run `sudo resize2fs /` inside the VPS to expand the filesystem.", False)
@@ -1335,16 +1376,16 @@ async def add_resources(ctx, vps_id: str, ram: int = None, cpu: int = None, disk
 async def admin_add(ctx, user: discord.Member):
     user_id = str(user.id)
     if user_id == str(MAIN_ADMIN_ID):
-        await ctx.send(embed=create_error_embed("Already Admin", "This user is already the main ReptideHosting admin!"))
+        await ctx.send(embed=create_error_embed("Already Admin", "This user is already the main Vantix Nodes admin!"))
         return
     if user_id in admin_data.get("admins", []):
-        await ctx.send(embed=create_error_embed("Already Admin", f"{user.mention} is already a ReptideHosting admin!"))
+        await ctx.send(embed=create_error_embed("Already Admin", f"{user.mention} is already a Vantix Nodes admin!"))
         return
     admin_data["admins"].append(user_id)
     save_admin_data()
-    await ctx.send(embed=create_success_embed("Admin Added", f"{user.mention} is now a ReptideHosting admin!"))
+    await ctx.send(embed=create_success_embed("Admin Added", f"{user.mention} is now a Vantix Nodes admin!"))
     try:
-        await user.send(embed=create_embed("🎉 ReptideHosting Admin Role Granted", f"You are now a ReptideHosting admin by {ctx.author.mention}", 0x00ff88))
+        await user.send(embed=create_embed("🎉 Vantix Nodes Admin Role Granted", f"You are now a Vantix Nodes admin by {ctx.author.mention}", 0x00ff88))
     except discord.Forbidden:
         await ctx.send(embed=create_info_embed("Notification Failed", f"Could not DM {user.mention}"))
 
@@ -1353,16 +1394,16 @@ async def admin_add(ctx, user: discord.Member):
 async def admin_remove(ctx, user: discord.Member):
     user_id = str(user.id)
     if user_id == str(MAIN_ADMIN_ID):
-        await ctx.send(embed=create_error_embed("Cannot Remove", "You cannot remove the main ReptideHosting admin!"))
+        await ctx.send(embed=create_error_embed("Cannot Remove", "You cannot remove the main Vantix Nodes admin!"))
         return
     if user_id not in admin_data.get("admins", []):
-        await ctx.send(embed=create_error_embed("Not Admin", f"{user.mention} is not a ReptideHosting admin!"))
+        await ctx.send(embed=create_error_embed("Not Admin", f"{user.mention} is not a Vantix Nodes admin!"))
         return
     admin_data["admins"].remove(user_id)
     save_admin_data()
-    await ctx.send(embed=create_success_embed("Admin Removed", f"{user.mention} is no longer a ReptideHosting admin!"))
+    await ctx.send(embed=create_success_embed("Admin Removed", f"{user.mention} is no longer a Vantix Nodes admin!"))
     try:
-        await user.send(embed=create_embed("⚠️ ReptideHosting Admin Role Revoked", f"Your admin role was removed by {ctx.author.mention}", 0xff3366))
+        await user.send(embed=create_embed("⚠️ Vantix Nodes Admin Role Revoked", f"Your admin role was removed by {ctx.author.mention}", 0xff3366))
     except discord.Forbidden:
         await ctx.send(embed=create_info_embed("Notification Failed", f"Could not DM {user.mention}"))
 
@@ -1371,7 +1412,7 @@ async def admin_remove(ctx, user: discord.Member):
 async def admin_list(ctx):
     admins = admin_data.get("admins", [])
     main_admin = await bot.fetch_user(MAIN_ADMIN_ID)
-    embed = create_embed("👑 ReptideHosting Admin Team", "Current ReptideHosting administrators:", 0x1a1a1a)
+    embed = create_embed("👑 Vantix Nodes Admin Team", "Current Vantix Nodes administrators:", 0x1a1a1a)
     add_field(embed, "🔰 Main Admin", f"{main_admin.mention} (ID: {MAIN_ADMIN_ID})", False)
     if admins:
         admin_list = []
@@ -1384,7 +1425,7 @@ async def admin_list(ctx):
         admin_text = "\n".join(admin_list)
         add_field(embed, "🛡️ Admins", admin_text, False)
     else:
-        add_field(embed, "🛡️ Admins", "No additional ReptideHosting admins", False)
+        add_field(embed, "🛡️ Admins", "No additional Vantix Nodes admins", False)
     await ctx.send(embed=embed)
 
 @bot.command(name='userinfo')
@@ -1392,7 +1433,7 @@ async def admin_list(ctx):
 async def user_info(ctx, user: discord.Member):
     user_id = str(user.id)
     vps_list = vps_data.get(user_id, [])
-    embed = create_embed(f"ReptideHosting User Information - {user.name}", f"Detailed information for {user.mention}", 0x1a1a1a)
+    embed = create_embed(f"Vantix Nodes User Information - {user.name}", f"Detailed information for {user.mention}", 0x1a1a1a)
     add_field(embed, "👤 User Details", f"**Name:** {user.name}\n**ID:** {user.id}\n**Joined:** {user.joined_at.strftime('%Y-%m-%d %H:%M:%S') if user.joined_at else 'Unknown'}", False)
     if vps_list:
         vps_info = []
@@ -1419,16 +1460,16 @@ async def user_info(ctx, user: discord.Member):
             total_cpu += int(vps['cpu'])
             total_storage += storage_gb
         vps_summary = f"**Total VPS:** {len(vps_list)}\n**Running:** {running_count}\n**Suspended:** {suspended_count}\n**Whitelisted:** {whitelisted_count}\n**Total RAM:** {total_ram}GB\n**Total CPU:** {total_cpu} cores\n**Total Storage:** {total_storage}GB"
-        add_field(embed, "🖥️ ReptideHosting VPS Information", vps_summary, False)
+        add_field(embed, "🖥️ Vantix Nodes VPS Information", vps_summary, False)
 
         vps_text = "\n".join(vps_info)
         chunks = [vps_text[i:i+1024] for i in range(0, len(vps_text), 1024)]
         for idx, chunk in enumerate(chunks, 1):
             add_field(embed, f"📋 VPS List (Part {idx})", chunk, False)
     else:
-        add_field(embed, "🖥️ ReptideHosting VPS Information", "**No VPS owned**", False)
+        add_field(embed, "🖥️ Vantix Nodes VPS Information", "**No VPS owned**", False)
     is_admin_user = user_id == str(MAIN_ADMIN_ID) or user_id in admin_data.get("admins", [])
-    add_field(embed, "🛡️ ReptideHosting Admin Status", f"**{'Yes' if is_admin_user else 'No'}**", False)
+    add_field(embed, "🛡️ Vantix Nodes Admin Status", f"**{'Yes' if is_admin_user else 'No'}**", False)
     await ctx.send(embed=embed)
 
 @bot.command(name='serverstats')
@@ -1456,7 +1497,7 @@ async def server_stats(ctx):
                     running_vps += 1
             if vps.get('whitelisted', False):
                 whitelisted_vps += 1
-    embed = create_embed("📊 ReptideHosting Server Statistics", "Current ReptideHosting server overview", 0x1a1a1a)
+    embed = create_embed("📊 Vantix Nodes Server Statistics", "Current Vantix Nodes server overview", 0x1a1a1a)
     add_field(embed, "👥 Users", f"**Total Users:** {total_users}\n**Total Admins:** {len(admin_data.get('admins', [])) + 1}", False)
     add_field(embed, "🖥️ VPS", f"**Total VPS:** {total_vps}\n**Running:** {running_vps}\n**Suspended:** {suspended_vps}\n**Whitelisted:** {whitelisted_vps}\n**Stopped:** {total_vps - running_vps - suspended_vps}", False)
     add_field(embed, "📈 Resources", f"**Total RAM:** {total_ram}GB\n**Total CPU:** {total_cpu} cores\n**Total Storage:** {total_storage}GB", False)
@@ -1476,13 +1517,13 @@ async def vps_info(ctx, container_name: str = None):
                         status_text += " (SUSPENDED)"
                     if vps.get('whitelisted', False):
                         status_text += " (WHITELISTED)"
-                    all_vps.append(f"**{user.name}** - ReptideHosting VPS {i+1}: `{vps['container_name']}` - {status_text}")
+                    all_vps.append(f"**{user.name}** - Vantix Nodes VPS {i+1}: `{vps['container_name']}` - {status_text}")
             except:
                 pass
         vps_text = "\n".join(all_vps)
         chunks = [vps_text[i:i+1024] for i in range(0, len(vps_text), 1024)]
         for idx, chunk in enumerate(chunks, 1):
-            embed = create_embed(f"🖥️ All ReptideHosting VPS (Part {idx})", f"List of all ReptideHosting VPS deployments", 0x1a1a1a)
+            embed = create_embed(f"🖥️ All Vantix Nodes VPS (Part {idx})", f"List of all Vantix Nodes VPS deployments", 0x1a1a1a)
             add_field(embed, "VPS List", chunk, False)
             await ctx.send(embed=embed)
     else:
@@ -1497,11 +1538,11 @@ async def vps_info(ctx, container_name: str = None):
             if found_vps:
                 break
         if not found_vps:
-            await ctx.send(embed=create_error_embed("VPS Not Found", f"No ReptideHosting VPS found with container name: `{container_name}`"))
+            await ctx.send(embed=create_error_embed("VPS Not Found", f"No Vantix Nodes VPS found with container name: `{container_name}`"))
             return
         suspended_text = " (SUSPENDED)" if found_vps.get('suspended', False) else ""
         whitelisted_text = " (WHITELISTED)" if found_vps.get('whitelisted', False) else ""
-        embed = create_embed(f"🖥️ ReptideHosting VPS Information - {container_name}", f"Details for VPS owned by {found_user.mention}{suspended_text}{whitelisted_text}", 0x1a1a1a)
+        embed = create_embed(f"🖥️ Vantix Nodes VPS Information - {container_name}", f"Details for VPS owned by {found_user.mention}{suspended_text}{whitelisted_text}", 0x1a1a1a)
         add_field(embed, "👤 Owner", f"**Name:** {found_user.name}\n**ID:** {found_user.id}", False)
         add_field(embed, "📊 Specifications", f"**RAM:** {found_vps['ram']}\n**CPU:** {found_vps['cpu']} Cores\n**Storage:** {found_vps['storage']}", False)
         add_field(embed, "📈 Status", f"**Current:** {found_vps.get('status', 'unknown').upper()}{suspended_text}{whitelisted_text}\n**Suspended:** {found_vps.get('suspended', False)}\n**Whitelisted:** {found_vps.get('whitelisted', False)}\n**Created:** {found_vps.get('created_at', 'Unknown')}", False)
@@ -1522,7 +1563,7 @@ async def vps_info(ctx, container_name: str = None):
 @bot.command(name='restart-vps')
 @is_admin()
 async def restart_vps(ctx, container_name: str):
-    await ctx.send(embed=create_info_embed("Restarting VPS", f"Restarting ReptideHosting VPS `{container_name}`..."))
+    await ctx.send(embed=create_info_embed("Restarting VPS", f"Restarting Vantix Nodes VPS `{container_name}`..."))
     try:
         await execute_lxc(f"lxc restart {container_name}")
         for user_id, vps_list in vps_data.items():
@@ -1532,14 +1573,14 @@ async def restart_vps(ctx, container_name: str):
                     vps['suspended'] = False
                     save_vps_data()
                     break
-        await ctx.send(embed=create_success_embed("VPS Restarted", f"ReptideHosting VPS `{container_name}` has been restarted successfully!"))
+        await ctx.send(embed=create_success_embed("VPS Restarted", f"Vantix Nodes VPS `{container_name}` has been restarted successfully!"))
     except Exception as e:
         await ctx.send(embed=create_error_embed("Restart Failed", f"Error: {str(e)}"))
 
 @bot.command(name='exec')
 @is_admin()
 async def execute_command(ctx, container_name: str, *, command: str):
-    await ctx.send(embed=create_info_embed("Executing Command", f"Running command in ReptideHosting VPS `{container_name}`..."))
+    await ctx.send(embed=create_info_embed("Executing Command", f"Running command in Vantix Nodes VPS `{container_name}`..."))
     try:
         proc = await asyncio.create_subprocess_exec(
             "lxc", "exec", container_name, "--", "bash", "-c", command,
@@ -1566,7 +1607,7 @@ async def execute_command(ctx, container_name: str, *, command: str):
 @bot.command(name='stop-vps-all')
 @is_admin()
 async def stop_all_vps(ctx):
-    embed = create_warning_embed("Stopping All ReptideHosting VPS", "⚠️ **WARNING:** This will stop ALL running VPS on the ReptideHosting server.\n\nThis action cannot be undone. Continue?")
+    embed = create_warning_embed("Stopping All Vantix Nodes VPS", "⚠️ **WARNING:** This will stop ALL running VPS on the Vantix Nodes server.\n\nThis action cannot be undone. Continue?")
     class ConfirmView(discord.ui.View):
         def __init__(self):
             super().__init__(timeout=60)
@@ -1590,13 +1631,13 @@ async def stop_all_vps(ctx):
                                 vps['suspended'] = False
                                 stopped_count += 1
                     save_vps_data()
-                    embed = create_success_embed("All ReptideHosting VPS Stopped", f"Successfully stopped {stopped_count} VPS using `lxc stop --all --force`")
+                    embed = create_success_embed("All Vantix Nodes VPS Stopped", f"Successfully stopped {stopped_count} VPS using `lxc stop --all --force`")
                     output_text = stdout.decode() if stdout else 'No output'
                     add_field(embed, "Command Output", f"```\n{output_text}\n```", False)
                     await interaction.followup.send(embed=embed)
                 else:
                     error_msg = stderr.decode() if stderr else "Unknown error"
-                    embed = create_error_embed("Stop Failed", f"Failed to stop ReptideHosting VPS: {error_msg}")
+                    embed = create_error_embed("Stop Failed", f"Failed to stop Vantix Nodes VPS: {error_msg}")
                     await interaction.followup.send(embed=embed)
             except Exception as e:
                 embed = create_error_embed("Error", f"Error stopping VPS: {str(e)}")
@@ -1604,7 +1645,7 @@ async def stop_all_vps(ctx):
 
         @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
         async def cancel(self, interaction: discord.Interaction, item: discord.ui.Button):
-            await interaction.response.edit_message(embed=create_info_embed("Operation Cancelled", "The stop all ReptideHosting VPS operation has been cancelled."))
+            await interaction.response.edit_message(embed=create_info_embed("Operation Cancelled", "The stop all Vantix Nodes VPS operation has been cancelled."))
     await ctx.send(embed=embed, view=ConfirmView())
 
 @bot.command(name='cpu-monitor')
@@ -1613,16 +1654,16 @@ async def resource_monitor_control(ctx, action: str = "status"):
     global resource_monitor_active
     if action.lower() == "status":
         status = "Active" if resource_monitor_active else "Inactive"
-        embed = create_embed("ReptideHosting Resource Monitor Status", f"ReptideHosting resource monitoring is currently **{status}**", 0x00ccff if resource_monitor_active else 0xffaa00)
+        embed = create_embed("Vantix Nodes Resource Monitor Status", f"Vantix Nodes resource monitoring is currently **{status}**", 0x00ccff if resource_monitor_active else 0xffaa00)
         add_field(embed, "Thresholds", f"{CPU_THRESHOLD}% CPU / {RAM_THRESHOLD}% RAM usage", True)
         add_field(embed, "Check Interval", f"60 seconds (host)", True)
         await ctx.send(embed=embed)
     elif action.lower() == "enable":
         resource_monitor_active = True
-        await ctx.send(embed=create_success_embed("Resource Monitor Enabled", "ReptideHosting resource monitoring has been enabled."))
+        await ctx.send(embed=create_success_embed("Resource Monitor Enabled", "Vantix Nodes resource monitoring has been enabled."))
     elif action.lower() == "disable":
         resource_monitor_active = False
-        await ctx.send(embed=create_warning_embed("Resource Monitor Disabled", "ReptideHosting resource monitoring has been disabled."))
+        await ctx.send(embed=create_warning_embed("Resource Monitor Disabled", "Vantix Nodes resource monitoring has been disabled."))
     else:
         await ctx.send(embed=create_error_embed("Invalid Action", "Use: `!cpu-monitor <status|enable|disable>`"))
 
@@ -1645,12 +1686,12 @@ async def resize_vps(ctx, container_name: str, ram: int = None, cpu: int = None,
         if found_vps:
             break
     if not found_vps:
-        await ctx.send(embed=create_error_embed("VPS Not Found", f"No ReptideHosting VPS found with container name: `{container_name}`"))
+        await ctx.send(embed=create_error_embed("VPS Not Found", f"No Vantix Nodes VPS found with container name: `{container_name}`"))
         return
     was_running = found_vps.get('status') == 'running' and not found_vps.get('suspended', False)
     disk_changed = disk is not None
     if was_running:
-        await ctx.send(embed=create_info_embed("Stopping VPS", f"Stopping ReptideHosting VPS `{container_name}` to apply resource changes..."))
+        await ctx.send(embed=create_info_embed("Stopping VPS", f"Stopping Vantix Nodes VPS `{container_name}` to apply resource changes..."))
         try:
             await execute_lxc(f"lxc stop {container_name}")
             found_vps['status'] = 'stopped'
@@ -1693,7 +1734,7 @@ async def resize_vps(ctx, container_name: str, ram: int = None, cpu: int = None,
             found_vps['status'] = 'running'
             save_vps_data()
 
-        embed = create_success_embed("VPS Resized", f"Successfully resized resources for ReptideHosting VPS `{container_name}`")
+        embed = create_success_embed("VPS Resized", f"Successfully resized resources for Vantix Nodes VPS `{container_name}`")
         add_field(embed, "Changes Applied", "\n".join(changes), False)
         if disk_changed:
             add_field(embed, "Disk Note", "Run `sudo resize2fs /` inside the VPS to expand the filesystem.", False)
@@ -1707,8 +1748,8 @@ async def resize_vps(ctx, container_name: str, ram: int = None, cpu: int = None,
 async def clone_vps(ctx, container_name: str, new_name: str = None):
     if not new_name:
         timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-        new_name = f"reptidehosting-{container_name}-clone-{timestamp}"
-    await ctx.send(embed=create_info_embed("Cloning VPS", f"Cloning ReptideHosting VPS `{container_name}` to `{new_name}`..."))
+        new_name = f"vantixnodes-{container_name}-clone-{timestamp}"
+    await ctx.send(embed=create_info_embed("Cloning VPS", f"Cloning Vantix Nodes VPS `{container_name}` to `{new_name}`..."))
     try:
         found_vps = None
         user_id = None
@@ -1723,7 +1764,7 @@ async def clone_vps(ctx, container_name: str, new_name: str = None):
                 break
 
         if not found_vps:
-            await ctx.send(embed=create_error_embed("VPS Not Found", f"No ReptideHosting VPS found with container name: `{container_name}`"))
+            await ctx.send(embed=create_error_embed("VPS Not Found", f"No Vantix Nodes VPS found with container name: `{container_name}`"))
             return
 
         await execute_lxc(f"lxc copy {container_name} {new_name}")
@@ -1746,7 +1787,7 @@ async def clone_vps(ctx, container_name: str, new_name: str = None):
         vps_data[user_id].append(new_vps)
         save_vps_data()
 
-        embed = create_success_embed("VPS Cloned", f"Successfully cloned ReptideHosting VPS `{container_name}` to `{new_name}`")
+        embed = create_success_embed("VPS Cloned", f"Successfully cloned Vantix Nodes VPS `{container_name}` to `{new_name}`")
         add_field(embed, "New VPS Details", f"**RAM:** {new_vps['ram']}\n**CPU:** {new_vps['cpu']} Cores\n**Storage:** {new_vps['storage']}", False)
         add_field(embed, "Features", "Nesting, Privileged, FUSE, Kernel Modules (Docker Ready)", False)
         await ctx.send(embed=embed)
@@ -1757,11 +1798,11 @@ async def clone_vps(ctx, container_name: str, new_name: str = None):
 @bot.command(name='migrate-vps')
 @is_admin()
 async def migrate_vps(ctx, container_name: str, target_pool: str):
-    await ctx.send(embed=create_info_embed("Migrating VPS", f"Migrating ReptideHosting VPS `{container_name}` to storage pool `{target_pool}`..."))
+    await ctx.send(embed=create_info_embed("Migrating VPS", f"Migrating Vantix Nodes VPS `{container_name}` to storage pool `{target_pool}`..."))
     try:
         await execute_lxc(f"lxc stop {container_name}")
 
-        temp_name = f"reptidehosting-{container_name}-temp-{int(time.time())}"
+        temp_name = f"vantixnodes-{container_name}-temp-{int(time.time())}"
 
         await execute_lxc(f"lxc copy {container_name} {temp_name} -s {target_pool}")
 
@@ -1781,7 +1822,7 @@ async def migrate_vps(ctx, container_name: str, target_pool: str):
                     save_vps_data()
                     break
 
-        await ctx.send(embed=create_success_embed("VPS Migrated", f"Successfully migrated ReptideHosting VPS `{container_name}` to storage pool `{target_pool}`"))
+        await ctx.send(embed=create_success_embed("VPS Migrated", f"Successfully migrated Vantix Nodes VPS `{container_name}` to storage pool `{target_pool}`"))
 
     except Exception as e:
         await ctx.send(embed=create_error_embed("Migration Failed", f"Error: {str(e)}"))
@@ -1789,7 +1830,7 @@ async def migrate_vps(ctx, container_name: str, target_pool: str):
 @bot.command(name='vps-stats')
 @is_admin()
 async def vps_stats(ctx, container_name: str):
-    await ctx.send(embed=create_info_embed("Gathering Statistics", f"Collecting statistics for ReptideHosting VPS `{container_name}`..."))
+    await ctx.send(embed=create_info_embed("Gathering Statistics", f"Collecting statistics for Vantix Nodes VPS `{container_name}`..."))
     try:
         status = await get_container_status(container_name)
         cpu_usage = await get_container_cpu(container_name)
@@ -1809,7 +1850,7 @@ async def vps_stats(ctx, container_name: str):
                 network_usage = line.split(":")[1].strip()
                 break
 
-        embed = create_embed(f"📊 ReptideHosting VPS Statistics - {container_name}", f"Resource usage statistics", 0x1a1a1a)
+        embed = create_embed(f"📊 Vantix Nodes VPS Statistics - {container_name}", f"Resource usage statistics", 0x1a1a1a)
         add_field(embed, "📈 Status", f"**{status.upper()}**", False)
         add_field(embed, "💻 CPU Usage", f"**{cpu_usage}**", True)
         add_field(embed, "🧠 Memory Usage", f"**{memory_usage}**", True)
@@ -1858,7 +1899,7 @@ async def vps_network(ctx, container_name: str, action: str, value: str = None):
                 if len(output) > 1000:
                     output = output[:1000] + "\n... (truncated)"
 
-                embed = create_embed(f"🌐 ReptideHosting Network Interfaces - {container_name}", "Network configuration", 0x1a1a1a)
+                embed = create_embed(f"🌐 Vantix Nodes Network Interfaces - {container_name}", "Network configuration", 0x1a1a1a)
                 add_field(embed, "Interfaces", f"```\n{output}\n```", False)
                 await ctx.send(embed=embed)
             else:
@@ -1867,15 +1908,15 @@ async def vps_network(ctx, container_name: str, action: str, value: str = None):
         elif action.lower() == "limit" and value:
             await execute_lxc(f"lxc config device set {container_name} eth0 limits.egress {value}")
             await execute_lxc(f"lxc config device set {container_name} eth0 limits.ingress {value}")
-            await ctx.send(embed=create_success_embed("Network Limited", f"Set ReptideHosting network limit to {value} for `{container_name}`"))
+            await ctx.send(embed=create_success_embed("Network Limited", f"Set Vantix Nodes network limit to {value} for `{container_name}`"))
 
         elif action.lower() == "add" and value:
             await execute_lxc(f"lxc config device add {container_name} eth1 nic nictype=bridged parent={value}")
-            await ctx.send(embed=create_success_embed("Network Added", f"Added network interface to ReptideHosting VPS `{container_name}` with bridge `{value}`"))
+            await ctx.send(embed=create_success_embed("Network Added", f"Added network interface to Vantix Nodes VPS `{container_name}` with bridge `{value}`"))
 
         elif action.lower() == "remove" and value:
             await execute_lxc(f"lxc config device remove {container_name} {value}")
-            await ctx.send(embed=create_success_embed("Network Removed", f"Removed network interface `{value}` from ReptideHosting VPS `{container_name}`"))
+            await ctx.send(embed=create_success_embed("Network Removed", f"Removed network interface `{value}` from Vantix Nodes VPS `{container_name}`"))
 
         else:
             await ctx.send(embed=create_error_embed("Invalid Parameters", "Please provide valid parameters for the action"))
@@ -1885,7 +1926,7 @@ async def vps_network(ctx, container_name: str, action: str, value: str = None):
 @bot.command(name='vps-processes')
 @is_admin()
 async def vps_processes(ctx, container_name: str):
-    await ctx.send(embed=create_info_embed("Gathering Processes", f"Listing processes in ReptideHosting VPS `{container_name}`..."))
+    await ctx.send(embed=create_info_embed("Gathering Processes", f"Listing processes in Vantix Nodes VPS `{container_name}`..."))
     try:
         proc = await asyncio.create_subprocess_exec(
             "lxc", "exec", container_name, "--", "ps", "aux",
@@ -1899,7 +1940,7 @@ async def vps_processes(ctx, container_name: str):
             if len(output) > 1000:
                 output = output[:1000] + "\n... (truncated)"
 
-            embed = create_embed(f"⚙️ ReptideHosting Processes - {container_name}", "Running processes", 0x1a1a1a)
+            embed = create_embed(f"⚙️ Vantix Nodes Processes - {container_name}", "Running processes", 0x1a1a1a)
             add_field(embed, "Process List", f"```\n{output}\n```", False)
             await ctx.send(embed=embed)
         else:
@@ -1910,7 +1951,7 @@ async def vps_processes(ctx, container_name: str):
 @bot.command(name='vps-logs')
 @is_admin()
 async def vps_logs(ctx, container_name: str, lines: int = 50):
-    await ctx.send(embed=create_info_embed("Gathering Logs", f"Fetching last {lines} lines from ReptideHosting VPS `{container_name}`..."))
+    await ctx.send(embed=create_info_embed("Gathering Logs", f"Fetching last {lines} lines from Vantix Nodes VPS `{container_name}`..."))
     try:
         proc = await asyncio.create_subprocess_exec(
             "lxc", "exec", container_name, "--", "journalctl", "-n", str(lines),
@@ -1924,7 +1965,7 @@ async def vps_logs(ctx, container_name: str, lines: int = 50):
             if len(output) > 1000:
                 output = output[:1000] + "\n... (truncated)"
 
-            embed = create_embed(f"📋 ReptideHosting Logs - {container_name}", f"Last {lines} log lines", 0x1a1a1a)
+            embed = create_embed(f"📋 Vantix Nodes Logs - {container_name}", f"Last {lines} log lines", 0x1a1a1a)
             add_field(embed, "System Logs", f"```\n{output}\n```", False)
             await ctx.send(embed=embed)
         else:
@@ -1947,7 +1988,7 @@ async def suspend_vps(ctx, container_name: str, *, reason: str = "Admin action")
         for vps in lst:
             if vps['container_name'] == container_name:
                 if vps.get('status') != 'running':
-                    await ctx.send(embed=create_error_embed("Cannot Suspend", "ReptideHosting VPS must be running to suspend."))
+                    await ctx.send(embed=create_error_embed("Cannot Suspend", "Vantix Nodes VPS must be running to suspend."))
                     return
                 try:
                     await execute_lxc(f"lxc stop {container_name}")
@@ -1966,17 +2007,17 @@ async def suspend_vps(ctx, container_name: str, *, reason: str = "Admin action")
                     return
                 try:
                     owner = await bot.fetch_user(int(uid))
-                    embed = create_warning_embed("🚨 ReptideHosting VPS Suspended", f"Your VPS `{container_name}` has been suspended by an admin.\n\n**Reason:** {reason}\n\nContact a ReptideHosting admin to unsuspend.")
+                    embed = create_warning_embed("🚨 Vantix Nodes VPS Suspended", f"Your VPS `{container_name}` has been suspended by an admin.\n\n**Reason:** {reason}\n\nContact a Vantix Nodes admin to unsuspend.")
                     await owner.send(embed=embed)
                 except Exception as dm_e:
                     logger.error(f"Failed to DM owner {uid}: {dm_e}")
-                await ctx.send(embed=create_success_embed("VPS Suspended", f"ReptideHosting VPS `{container_name}` suspended. Reason: {reason}"))
+                await ctx.send(embed=create_success_embed("VPS Suspended", f"Vantix Nodes VPS `{container_name}` suspended. Reason: {reason}"))
                 found = True
                 break
         if found:
             break
     if not found:
-        await ctx.send(embed=create_error_embed("Not Found", f"ReptideHosting VPS `{container_name}` not found."))
+        await ctx.send(embed=create_error_embed("Not Found", f"Vantix Nodes VPS `{container_name}` not found."))
 
 @bot.command(name='unsuspend-vps')
 @is_admin()
@@ -1986,20 +2027,20 @@ async def unsuspend_vps(ctx, container_name: str):
         for vps in lst:
             if vps['container_name'] == container_name:
                 if not vps.get('suspended', False):
-                    await ctx.send(embed=create_error_embed("Not Suspended", "ReptideHosting VPS is not suspended."))
+                    await ctx.send(embed=create_error_embed("Not Suspended", "Vantix Nodes VPS is not suspended."))
                     return
                 try:
                     vps['suspended'] = False
                     vps['status'] = 'running'
                     await execute_lxc(f"lxc start {container_name}")
                     save_vps_data()
-                    await ctx.send(embed=create_success_embed("VPS Unsuspended", f"ReptideHosting VPS `{container_name}` unsuspended and started."))
+                    await ctx.send(embed=create_success_embed("VPS Unsuspended", f"Vantix Nodes VPS `{container_name}` unsuspended and started."))
                     found = True
                 except Exception as e:
                     await ctx.send(embed=create_error_embed("Start Failed", str(e)))
                 try:
                     owner = await bot.fetch_user(int(uid))
-                    embed = create_success_embed("🟢 ReptideHosting VPS Unsuspended", f"Your VPS `{container_name}` has been unsuspended by an admin.\nYou can now manage it again.")
+                    embed = create_success_embed("🟢 Vantix Nodes VPS Unsuspended", f"Your VPS `{container_name}` has been unsuspended by an admin.\nYou can now manage it again.")
                     await owner.send(embed=embed)
                 except Exception as dm_e:
                     logger.error(f"Failed to DM owner {uid} about unsuspension: {dm_e}")
@@ -2007,7 +2048,7 @@ async def unsuspend_vps(ctx, container_name: str):
         if found:
             break
     if not found:
-        await ctx.send(embed=create_error_embed("Not Found", f"ReptideHosting VPS `{container_name}` not found."))
+        await ctx.send(embed=create_error_embed("Not Found", f"Vantix Nodes VPS `{container_name}` not found."))
 
 @bot.command(name='suspension-logs')
 @is_admin()
@@ -2022,13 +2063,13 @@ async def suspension_logs(ctx, container_name: str = None):
             if found:
                 break
         if not found:
-            await ctx.send(embed=create_error_embed("Not Found", f"ReptideHosting VPS `{container_name}` not found."))
+            await ctx.send(embed=create_error_embed("Not Found", f"Vantix Nodes VPS `{container_name}` not found."))
             return
         history = found.get('suspension_history', [])
         if not history:
-            await ctx.send(embed=create_info_embed("No Suspensions", f"No ReptideHosting suspension history for `{container_name}`."))
+            await ctx.send(embed=create_info_embed("No Suspensions", f"No Vantix Nodes suspension history for `{container_name}`."))
             return
-        embed = create_embed("ReptideHosting Suspension History", f"For `{container_name}`")
+        embed = create_embed("Vantix Nodes Suspension History", f"For `{container_name}`")
         text = []
         for h in sorted(history, key=lambda x: x['time'], reverse=True)[:10]:
             t = datetime.fromisoformat(h['time']).strftime('%Y-%m-%d %H:%M:%S')
@@ -2046,12 +2087,12 @@ async def suspension_logs(ctx, container_name: str = None):
                     t = datetime.fromisoformat(event['time']).strftime('%Y-%m-%d %H:%M')
                     all_logs.append(f"**{t}** - VPS `{vps['container_name']}` (Owner: <@{uid}>) - {event['reason']} (by {event['by']})")
         if not all_logs:
-            await ctx.send(embed=create_info_embed("No Suspensions", "No ReptideHosting suspension events recorded."))
+            await ctx.send(embed=create_info_embed("No Suspensions", "No Vantix Nodes suspension events recorded."))
             return
         logs_text = "\n".join(all_logs)
         chunks = [logs_text[i:i+1024] for i in range(0, len(logs_text), 1024)]
         for idx, chunk in enumerate(chunks, 1):
-            embed = create_embed(f"ReptideHosting Suspension Logs (Part {idx})", f"Global suspension events (newest first)")
+            embed = create_embed(f"Vantix Nodes Suspension Logs (Part {idx})", f"Global suspension events (newest first)")
             add_field(embed, "Events", chunk, False)
             await ctx.send(embed=embed)
 
@@ -2077,7 +2118,7 @@ async def apply_permissions(ctx, container_name: str):
                     save_vps_data()
                     break
 
-        await ctx.send(embed=create_success_embed("Permissions Applied", f"Advanced permissions applied to ReptideHosting VPS `{container_name}`. Docker-ready!"))
+        await ctx.send(embed=create_success_embed("Permissions Applied", f"Advanced permissions applied to Vantix Nodes VPS `{container_name}`. Docker-ready!"))
     except Exception as e:
         await ctx.send(embed=create_error_embed("Apply Failed", f"Error: {str(e)}"))
 
@@ -2105,12 +2146,12 @@ async def resource_check(ctx):
                         vps['suspension_history'].append({
                             'time': datetime.now().isoformat(),
                             'reason': reason,
-                            'by': 'ReptideHosting Auto Resource Check'
+                            'by': 'Vantix Nodes Auto Resource Check'
                         })
                         save_vps_data()
                         try:
                             owner = await bot.fetch_user(int(user_id))
-                            warn_embed = create_warning_embed("🚨 VPS Auto-Suspended", f"Your VPS `{container}` has been automatically suspended due to high resource usage.\n\n**Reason:** {reason}\n\nContact ReptideHosting admin to unsuspend and address the issue.")
+                            warn_embed = create_warning_embed("🚨 VPS Auto-Suspended", f"Your VPS `{container}` has been automatically suspended due to high resource usage.\n\n**Reason:** {reason}\n\nContact Vantix Nodes admin to unsuspend and address the issue.")
                             await owner.send(embed=warn_embed)
                         except Exception as dm_e:
                             logger.error(f"Failed to DM owner {user_id}: {dm_e}")
@@ -2143,7 +2184,7 @@ async def whitelist_vps(ctx, container_name: str, action: str):
         if found:
             break
     if not found:
-        await ctx.send(embed=create_error_embed("Not Found", f"ReptideHosting VPS `{container_name}` not found."))
+        await ctx.send(embed=create_error_embed("Not Found", f"Vantix Nodes VPS `{container_name}` not found."))
 
 @bot.command(name='snapshot')
 @is_admin()
@@ -2151,7 +2192,7 @@ async def snapshot_vps(ctx, container_name: str, snap_name: str = "snap0"):
     await ctx.send(embed=create_info_embed("Creating Snapshot", f"Creating snapshot '{snap_name}' for `{container_name}`..."))
     try:
         await execute_lxc(f"lxc snapshot {container_name} {snap_name}")
-        await ctx.send(embed=create_success_embed("Snapshot Created", f"Snapshot '{snap_name}' created for ReptideHosting VPS `{container_name}`."))
+        await ctx.send(embed=create_success_embed("Snapshot Created", f"Snapshot '{snap_name}' created for Vantix Nodes VPS `{container_name}`."))
     except Exception as e:
         await ctx.send(embed=create_error_embed("Snapshot Failed", f"Error: {str(e)}"))
 
@@ -2187,7 +2228,7 @@ async def restore_snapshot(ctx, container_name: str, snap_name: str):
                             vps['suspended'] = False
                             save_vps_data()
                             break
-                await inter.followup.send(embed=create_success_embed("Snapshot Restored", f"Restored '{snap_name}' for ReptideHosting VPS `{container_name}`."))
+                await inter.followup.send(embed=create_success_embed("Snapshot Restored", f"Restored '{snap_name}' for Vantix Nodes VPS `{container_name}`."))
             except Exception as e:
                 await inter.followup.send(embed=create_error_embed("Restore Failed", f"Error: {str(e)}"))
 
@@ -2201,29 +2242,29 @@ async def show_help(ctx):
     user_id = str(ctx.author.id)
     is_user_admin = user_id == str(MAIN_ADMIN_ID) or user_id in admin_data.get("admins", [])
     is_user_main_admin = user_id == str(MAIN_ADMIN_ID)
-    embed = create_embed("📚 ReptideHosting Command Help - User Commands", "ReptideHosting VPS Manager Commands:", 0x1a1a1a)
+    embed = create_embed("📚 Vantix Nodes Command Help - User Commands", "Vantix Nodes VPS Manager Commands:", 0x1a1a1a)
     user_commands = [
-        ("!ping", "Check ReptideHosting bot latency"),
+        ("!ping", "Check Vantix Nodes bot latency"),
         ("!uptime", "Show host uptime"),
-        ("!myvps", "List your ReptideHosting VPS"),
+        ("!myvps", "List your Vantix Nodes VPS"),
         ("!manage [@user]", "Manage your VPS or another user's VPS (Admin only)"),
-        ("!share-user @user <vps_number>", "Share ReptideHosting VPS access"),
-        ("!share-ruser @user <vps_number>", "Revoke ReptideHosting VPS access"),
-        ("!manage-shared @owner <vps_number>", "Manage shared ReptideHosting VPS")
+        ("!share-user @user <vps_number>", "Share Vantix Nodes VPS access"),
+        ("!share-ruser @user <vps_number>", "Revoke Vantix Nodes VPS access"),
+        ("!manage-shared @owner <vps_number>", "Manage shared Vantix Nodes VPS")
     ]
     user_commands_text = "\n".join([f"**{cmd}** - {desc}" for cmd, desc in user_commands])
     add_field(embed, "👤 User Commands", user_commands_text, False)
     await ctx.send(embed=embed)
     if is_user_admin:
-        embed = create_embed("📚 ReptideHosting Command Help - Admin Commands", "ReptideHosting VPS Manager Commands:", 0x1a1a1a)
+        embed = create_embed("📚 Vantix Nodes Command Help - Admin Commands", "Vantix Nodes VPS Manager Commands:", 0x1a1a1a)
         admin_commands = [
             ("!lxc-list", "List all LXC containers"),
             ("!create <ram_gb> <cpu_cores> <disk_gb> @user", "Create VPS with OS selection"),
-            ("!delete-vps @user <vps_number> [reason]", "Delete user's ReptideHosting VPS"),
-            ("!add-resources <container> [ram] [cpu] [disk]", "Add resources to ReptideHosting VPS"),
-            ("!resize-vps <container> [ram] [cpu] [disk]", "Resize ReptideHosting VPS resources"),
-            ("!suspend-vps <container> [reason]", "Suspend ReptideHosting VPS"),
-            ("!unsuspend-vps <container>", "Unsuspend ReptideHosting VPS"),
+            ("!delete-vps @user <vps_number> [reason]", "Delete user's Vantix Nodes VPS"),
+            ("!add-resources <container> [ram] [cpu] [disk]", "Add resources to Vantix Nodes VPS"),
+            ("!resize-vps <container> [ram] [cpu] [disk]", "Resize Vantix Nodes VPS resources"),
+            ("!suspend-vps <container> [reason]", "Suspend Vantix Nodes VPS"),
+            ("!unsuspend-vps <container>", "Unsuspend Vantix Nodes VPS"),
             ("!suspension-logs [container]", "View suspension logs"),
             ("!whitelist-vps <container> <add|remove>", "Whitelist VPS from auto-suspend"),
             ("!resource-check", "Check and suspend high-usage VPS"),
@@ -2254,7 +2295,7 @@ async def show_help(ctx):
         add_field(embed, "🛡️ Admin Commands", admin_commands_text, False)
         await ctx.send(embed=embed)
     if is_user_main_admin:
-        embed = create_embed("📚 ReptideHosting Command Help - Main Admin Commands", "ReptideHosting VPS Manager Commands:", 0x1a1a1a)
+        embed = create_embed("📚 Vantix Nodes Command Help - Main Admin Commands", "Vantix Nodes VPS Manager Commands:", 0x1a1a1a)
         main_admin_commands = [
             ("!admin-add @user", "Add admin"),
             ("!admin-remove @user", "Remove admin"),
@@ -2262,20 +2303,20 @@ async def show_help(ctx):
         ]
         main_admin_commands_text = "\n".join([f"**{cmd}** - {desc}" for cmd, desc in main_admin_commands])
         add_field(embed, "👑 Main Admin Commands", main_admin_commands_text, False)
-        embed.set_footer(text="ReptideHosting VPS Manager • Auto-suspend high-usage only • Whitelist support • Multi-OS • Enhanced monitoring • Docker-ready VPS • Snapshots")
+        embed.set_footer(text="Vantix Nodes VPS Manager • Auto-suspend high-usage only • Whitelist support • Multi-OS • Enhanced monitoring • Docker-ready VPS • Snapshots")
         await ctx.send(embed=embed)
 
 # Command aliases for typos
 @bot.command(name='mangage')
 async def manage_typo(ctx):
-    await ctx.send(embed=create_info_embed("Command Correction", "Did you mean `!manage`? Use the correct ReptideHosting command."))
+    await ctx.send(embed=create_info_embed("Command Correction", "Did you mean `!manage`? Use the correct Vantix Nodes command."))
 
 @bot.command(name='stats')
 async def stats_alias(ctx):
     if str(ctx.author.id) == str(MAIN_ADMIN_ID) or str(ctx.author.id) in admin_data.get("admins", []):
         await server_stats(ctx)
     else:
-        await ctx.send(embed=create_error_embed("Access Denied", "This ReptideHosting command requires admin privileges."))
+        await ctx.send(embed=create_error_embed("Access Denied", "This Vantix Nodes command requires admin privileges."))
 
 @bot.command(name='info')
 async def info_alias(ctx, user: discord.Member = None):
@@ -2285,7 +2326,7 @@ async def info_alias(ctx, user: discord.Member = None):
         else:
             await ctx.send(embed=create_error_embed("Usage", "Please specify a user: `!info @user`"))
     else:
-        await ctx.send(embed=create_error_embed("Access Denied", "This ReptideHosting command requires admin privileges."))
+        await ctx.send(embed=create_error_embed("Access Denied", "This Vantix Nodes command requires admin privileges."))
 
 # Run the bot
 if __name__ == "__main__":
